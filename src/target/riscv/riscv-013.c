@@ -516,7 +516,7 @@ static dmi_status_t dmi_scan(struct target *target, uint32_t *address_in,
 		jtag_add_dr_scan(target->tap, 1, &field, TAP_IDLE);
 	}
 
-	int idle_count = info->dmi_busy_delay;
+	int idle_count = info->dmi_busy_delay + info->dtmcs_idle;
 	if (exec)
 		idle_count += info->ac_busy_delay;
 
@@ -1587,17 +1587,21 @@ static int examine(struct target *target)
 	info->dtmcs_idle = get_field(dtmcontrol, DTM_DTMCS_IDLE);
 
 	/* Reset the Debug Module. */
+
 	dm013_info_t *dm = get_dm(target);
 	if (!dm->was_reset) {
+	  	LOG_DEBUG("-D- Reset the Debug Module");
 		dmi_write(target, DMI_DMCONTROL, 0);
+		LOG_DEBUG("-D- Activate the  Debug Module");
 		dmi_write(target, DMI_DMCONTROL, DMI_DMCONTROL_DMACTIVE);
 		dm->was_reset = true;
 	}
-
+	LOG_DEBUG("-D- Write all fields of DMCONTROL ");
 	dmi_write(target, DMI_DMCONTROL, DMI_DMCONTROL_HARTSELLO |
 			DMI_DMCONTROL_HARTSELHI | DMI_DMCONTROL_DMACTIVE |
 			DMI_DMCONTROL_HASEL);
 	uint32_t dmcontrol;
+	LOG_DEBUG("-D- Read back DMCONTROL ");
 	if (dmi_read(target, &dmcontrol, DMI_DMCONTROL) != ERROR_OK)
 		return ERROR_FAIL;
 
@@ -1608,7 +1612,7 @@ static int examine(struct target *target)
 	}
 
 	dm->hasel_supported = get_field(dmcontrol, DMI_DMCONTROL_HASEL);
-
+	LOG_DEBUG("-D- Read back DMSTATUS ");
 	uint32_t dmstatus;
 	if (dmstatus_read(target, &dmstatus, false) != ERROR_OK)
 		return ERROR_FAIL;

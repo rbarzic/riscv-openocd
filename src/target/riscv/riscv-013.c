@@ -395,7 +395,7 @@ static void dump_field(int idle, const struct scan_field *field)
 	unsigned int in_address = in >> DTM_DMI_ADDRESS_OFFSET;
 
 	log_printf_lf(LOG_LVL_DEBUG,
-			__FILE__, __LINE__, "scan",
+			__FILE__, __LINE__, "scan (dump_field)",
 			"%db %s %08x @%02x -> %s %08x @%02x; %di",
 			field->num_bits, op_string[out_op], out_data, out_address,
 			status_string[in_op], in_data, in_address, idle);
@@ -594,6 +594,7 @@ static int dmi_op_timeout(struct target *target, uint32_t *data_in,
 		status = dmi_scan(target, NULL, NULL, dmi_op, address, data_out,
 				exec);
 		if (status == DMI_STATUS_BUSY) {
+		  LOG_DEBUG("-D- status == DMI_STATUS_BUSY");
 			increase_dmi_busy_delay(target);
 			if (dmi_busy_encountered)
 				*dmi_busy_encountered = true;
@@ -620,6 +621,7 @@ static int dmi_op_timeout(struct target *target, uint32_t *data_in,
 			status = dmi_scan(target, &address_in, data_in, DMI_OP_NOP, address, 0,
 					false);
 			if (status == DMI_STATUS_BUSY) {
+			   LOG_DEBUG("-D- status == DMI_STATUS_BUSY - II");
 				increase_dmi_busy_delay(target);
 				if (dmi_busy_encountered)
 					*dmi_busy_encountered = true;
@@ -661,23 +663,31 @@ static int dmi_op(struct target *target, uint32_t *data_in,
 
 static int dmi_read(struct target *target, uint32_t *value, uint32_t address)
 {
-	return dmi_op(target, value, NULL, DMI_OP_READ, address, 0, false, true);
+        int status = dmi_op(target, value, NULL, DMI_OP_READ, address, 0, false, true);
+	LOG_DEBUG("-D- DMI Read @0x%08x  ->  0x%08x Status : %d", address, *value, status);
+	return  status;
 }
 
 static int dmi_read_exec(struct target *target, uint32_t *value, uint32_t address)
 {
-	return dmi_op(target, value, NULL, DMI_OP_READ, address, 0, true, true);
+        int status = dmi_op(target, value, NULL, DMI_OP_READ, address, 0, true, true);
+	LOG_DEBUG("-D- DMI Read Exec @0x%08x  ->  0x%08x Status : %d", address, *value, status);
+	return status;
 }
 
 static int dmi_write(struct target *target, uint32_t address, uint32_t value)
 {
-	return dmi_op(target, NULL, NULL, DMI_OP_WRITE, address, value, false, true);
+        int status = dmi_op(target, NULL, NULL, DMI_OP_WRITE, address, value, false, true);
+        LOG_DEBUG("-D- DMI Write @0x%08x  <- 0x%08x Status : %d", address, value, status);
+	return status;
 }
 
 static int dmi_write_exec(struct target *target, uint32_t address,
 		uint32_t value, bool ensure_success)
 {
-	return dmi_op(target, NULL, NULL, DMI_OP_WRITE, address, value, true, ensure_success);
+        int status = dmi_op(target, NULL, NULL, DMI_OP_WRITE, address, value, true, ensure_success);
+        LOG_DEBUG("-D- DMI Write Exec @0x%08x  <- 0x%08x  Status : %d", address, value, status);
+	return status;
 }
 
 int dmstatus_read_timeout(struct target *target, uint32_t *dmstatus,
@@ -790,10 +800,10 @@ static int execute_abstract_command(struct target *target, uint32_t command)
 				break;
 		}
 	}
-
+	LOG_DEBUG("-D- Write command");
 	if (dmi_write_exec(target, DMI_COMMAND, command, false) != ERROR_OK)
 		return ERROR_FAIL;
-
+	LOG_DEBUG("-D- Write command done");
 	uint32_t abstractcs = 0;
 	int result = wait_for_idle(target, &abstractcs);
 
@@ -1716,10 +1726,12 @@ static int examine(struct target *target)
 			continue;
 
 		r->current_hartid = i;
+		LOG_DEBUG("-D- Selecting hart %d.", i);
 		if (riscv013_select_current_hart(target) != ERROR_OK)
 			return ERROR_FAIL;
 
 		bool halted = riscv_is_halted(target);
+		LOG_DEBUG("-D- Hart %d %s", i, halted ? "halted" : "running");
 		if (!halted) {
 			if (riscv013_halt_go(target) != ERROR_OK) {
 				LOG_ERROR("Fatal: Hart %d failed to halt during examine()", i);
@@ -1736,6 +1748,8 @@ static int examine(struct target *target)
 			r->xlen[i] = 64;
 		else
 			r->xlen[i] = 32;
+
+		LOG_DEBUG("-D- XLEN ==  %d", r->xlen[i]);
 
 		if (register_read(target, &r->misa[i], GDB_REGNO_MISA)) {
 			LOG_ERROR("Fatal: Failed to read MISA from hart %d.", i);
